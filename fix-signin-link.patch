@@ -1,0 +1,147 @@
+From 2d0f73eaf6192e13c6bf8233b66d2c664a570866 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sun, 11 Oct 2026 03:22:42 +0200
+Subject: [PATCH] Make "Sign in with Riot" a real link so popup blockers can't
+ stop it
+
+window.open() was called after an async request, which browsers often
+block. The Riot login URL is now fetched when the page loads and the
+button is a plain link opening a new tab. Adds a visible "Riot page
+didn't open?" fallback link on the paste step, a loading state while the
+backend wakes up, and a retry button if the backend can't be reached.
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01JdBdhNUmC1Sm264Psf86tp
+---
+ frontend/src/pages/LoginPage.tsx | 90 ++++++++++++++++++++++++--------
+ 1 file changed, 68 insertions(+), 22 deletions(-)
+
+diff --git a/frontend/src/pages/LoginPage.tsx b/frontend/src/pages/LoginPage.tsx
+index 000dd1a..a9d274c 100644
+--- a/frontend/src/pages/LoginPage.tsx
++++ b/frontend/src/pages/LoginPage.tsx
+@@ -1,4 +1,4 @@
+-import { useState } from 'react';
++import { useEffect, useState } from 'react';
+ import { Link, Navigate, useNavigate } from 'react-router-dom';
+ import { useAuth } from '../hooks/useAuth';
+ import * as api from '../api/client';
+@@ -20,25 +20,40 @@ export default function LoginPage({ addMode = false }: LoginPageProps) {
+   const [pastedUrl, setPastedUrl] = useState('');
+   const [loading, setLoading] = useState(false);
+   const [error, setError] = useState<string | null>(null);
++  const [authUrl, setAuthUrl] = useState<string | null>(null);
++  const [urlAttempt, setUrlAttempt] = useState(0);
++
++  // The Riot login URL is fetched up front so "Sign in" can be a real link:
++  // browsers block window.open() when it is called after an async request.
++  useEffect(() => {
++    let cancelled = false;
++    api
++      .getAuthUrl()
++      .then(({ auth_url }) => {
++        if (!cancelled) setAuthUrl(auth_url);
++      })
++      .catch((err) => {
++        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to reach the server');
++      });
++    return () => {
++      cancelled = true;
++    };
++  }, [urlAttempt]);
+ 
+   if (state.status === 'authenticated' && !addMode) {
+     return <Navigate to="/shop" replace />;
+   }
+ 
+-  async function handleOpenLogin() {
+-    setLoading(true);
++  function handleOpenLogin() {
++    // The link itself opens Riot's page in a new tab; here we only switch to the paste step.
++    sessionStorage.setItem('login_stage', 'paste');
++    setStage('paste');
+     setError(null);
++  }
+ 
+-    try {
+-      const { auth_url } = await api.getAuthUrl();
+-      window.open(auth_url, '_blank', 'noopener');
+-      sessionStorage.setItem('login_stage', 'paste');
+-      setStage('paste');
+-    } catch (err) {
+-      setError(err instanceof Error ? err.message : 'Failed to start login');
+-    } finally {
+-      setLoading(false);
+-    }
++  function handleRetryUrl() {
++    setError(null);
++    setUrlAttempt((n) => n + 1);
+   }
+ 
+   async function handleSubmitUrl(e: React.FormEvent) {
+@@ -112,15 +127,35 @@ export default function LoginPage({ addMode = false }: LoginPageProps) {
+ 
+           {stage === 'start' ? (
+             <>
+-              <button
+-                onClick={handleOpenLogin}
+-                disabled={loading}
+-                className="flex w-full items-center justify-center gap-2 rounded bg-accent-red py-3 text-sm font-bold uppercase tracking-widest text-white transition-all hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+-                style={{ fontFamily: "'Oswald', sans-serif" }}
+-              >
+-                {loading && <Spinner />}
+-                SIGN IN WITH RIOT
+-              </button>
++              {authUrl ? (
++                <a
++                  href={authUrl}
++                  target="_blank"
++                  rel="noopener noreferrer"
++                  onClick={handleOpenLogin}
++                  className="flex w-full items-center justify-center gap-2 rounded bg-accent-red py-3 text-sm font-bold uppercase tracking-widest text-white transition-all hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
++                  style={{ fontFamily: "'Oswald', sans-serif" }}
++                >
++                  SIGN IN WITH RIOT
++                </a>
++              ) : error ? (
++                <button
++                  onClick={handleRetryUrl}
++                  className="flex w-full items-center justify-center gap-2 rounded bg-accent-red py-3 text-sm font-bold uppercase tracking-widest text-white transition-all hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
++                  style={{ fontFamily: "'Oswald', sans-serif" }}
++                >
++                  TRY AGAIN
++                </button>
++              ) : (
++                <button
++                  disabled
++                  className="flex w-full items-center justify-center gap-2 rounded bg-accent-red py-3 text-sm font-bold uppercase tracking-widest text-white transition-all hover:brightness-110 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
++                  style={{ fontFamily: "'Oswald', sans-serif" }}
++                >
++                  <Spinner />
++                  CONNECTING TO THE SERVER…
++                </button>
++              )}
+ 
+               <p className="mt-4 text-center text-xs leading-relaxed text-text-secondary/70">
+                 A new tab will open for Riot login. After signing in, you'll see
+@@ -149,6 +184,17 @@ export default function LoginPage({ addMode = false }: LoginPageProps) {
+                 </ol>
+               </div>
+ 
++              {authUrl && (
++                <a
++                  href={authUrl}
++                  target="_blank"
++                  rel="noopener noreferrer"
++                  className="block text-center text-xs text-accent-teal underline"
++                >
++                  Riot page didn't open? Click here to open it
++                </a>
++              )}
++
+               <form onSubmit={handleSubmitUrl} className="space-y-3">
+                 <textarea
+                   value={pastedUrl}
+-- 
+2.43.0
+
