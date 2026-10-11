@@ -1,16 +1,16 @@
-import { useCallback, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import { useWishlist } from '../hooks/useWishlist';
 import * as api from '../api/client';
-import type { Bundle, SkinOffer, Wallet } from '../types';
+import type { Bundle, BundleItem, SkinOffer, Wallet } from '../types';
+import AppHeader from '../components/AppHeader';
 import CountdownTimer from '../components/CountdownTimer';
-import WalletDisplay from '../components/WalletDisplay';
 import SkinCard from '../components/SkinCard';
 import BundleCard from '../components/BundleCard';
 
 export default function ShopPage() {
-  const { state, dispatch } = useAuth();
-  const navigate = useNavigate();
+  const { dispatch, activeAccount } = useAuth();
+  const { has, toggle } = useWishlist();
 
   const [offers, setOffers] = useState<SkinOffer[]>([]);
   const [secondsRemaining, setSecondsRemaining] = useState(0);
@@ -19,74 +19,71 @@ export default function ShopPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const token = activeAccount?.token ?? null;
+  const puuid = activeAccount?.puuid ?? null;
+
+  // Identifies the latest fetch so a slow response for a previously selected
+  // account can't overwrite the data of the account that is shown now.
+  const latestRequest = useRef(0);
+
   const fetchStoreData = useCallback(async () => {
+    if (!token || !puuid) return;
+
+    const requestId = ++latestRequest.current;
     setLoading(true);
     setError(null);
 
     try {
       const [dailyRes, bundleRes, walletRes] = await Promise.all([
-        api.getDailyStore(),
-        api.getBundles(),
-        api.getWallet(),
+        api.getDailyStore(token),
+        api.getBundles(token),
+        api.getWallet(token),
       ]);
+      if (requestId !== latestRequest.current) return;
 
       setOffers(dailyRes.offers);
       setSecondsRemaining(dailyRes.seconds_remaining);
       setBundles(bundleRes.bundles);
       setWallet(walletRes);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to load store';
-      if (message.includes('401') || message.includes('Not authenticated') || message.includes('Session expired')) {
-        dispatch({ type: 'LOGOUT' });
-        navigate('/', { replace: true });
+      if (requestId !== latestRequest.current) return;
+
+      if (err instanceof api.ApiError && err.status === 401) {
+        // This account's session is gone. The switcher flags it as expired and the
+        // app falls back to another account, or to the login page if none is left.
+        dispatch({ type: 'ACCOUNT_EXPIRED', puuid });
         return;
       }
-      setError(message);
+      setError(err instanceof Error ? err.message : 'Failed to load store');
     } finally {
-      setLoading(false);
+      if (requestId === latestRequest.current) setLoading(false);
     }
-  }, [dispatch, navigate]);
+  }, [token, puuid, dispatch]);
 
   useEffect(() => {
     fetchStoreData();
   }, [fetchStoreData]);
 
-  async function handleLogout() {
-    await api.logout().catch(() => {});
-    dispatch({ type: 'LOGOUT' });
-    navigate('/', { replace: true });
+  function handleToggleBundleItem(item: BundleItem) {
+    if (!item.skin_uuid) return;
+    toggle({
+      uuid: item.skin_uuid,
+      name: item.name,
+      display_icon: item.display_icon,
+      content_tier_name: item.content_tier_name,
+      content_tier_color: item.content_tier_color,
+    });
   }
+
+  // Wishlisted skins that are on sale in this account's shop right now.
+  const hits = [
+    ...offers.filter((o) => has(o.uuid)).map((o) => o.name),
+    ...bundles.flatMap((b) => b.items.filter((i) => has(i.skin_uuid)).map((i) => `${i.name} (bundle)`)),
+  ];
 
   return (
     <div className="min-h-svh bg-bg-primary">
-      {/* Header */}
-      <header className="sticky top-0 z-10 border-b border-border bg-bg-secondary/95 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-          <div className="flex items-center gap-4">
-            <h1
-              className="text-lg tracking-wider text-text-primary"
-              style={{ fontFamily: "'Oswald', sans-serif", fontWeight: 700 }}
-            >
-              VAL<span className="text-accent-red">SHOP</span>
-            </h1>
-            {state.puuid && (
-              <span className="hidden text-xs text-text-secondary sm:block">
-                {state.puuid.slice(0, 8)}...
-              </span>
-            )}
-          </div>
-
-          <div className="flex items-center gap-4">
-            {wallet && <WalletDisplay wallet={wallet} />}
-            <button
-              onClick={handleLogout}
-              className="rounded border border-border px-3 py-1.5 text-xs font-medium uppercase tracking-wider text-text-secondary transition-colors hover:border-accent-red hover:text-accent-red"
-            >
-              Logout
-            </button>
-          </div>
-        </div>
-      </header>
+      <AppHeader wallet={wallet} />
 
       {/* Main content */}
       <main className="mx-auto max-w-5xl px-4 py-8">
@@ -104,6 +101,19 @@ export default function ShopPage() {
           </div>
         ) : (
           <>
+            {/* Wishlist hits */}
+            {hits.length > 0 && (
+              <div
+                role="status"
+                className="mb-8 rounded-lg border border-accent-teal/60 bg-accent-teal/10 px-4 py-3 text-sm text-accent-teal"
+              >
+                <span className="font-bold">
+                  {hits.length} skin{hits.length > 1 ? 's' : ''} from your wishlist
+                </span>{' '}
+                {hits.length > 1 ? 'are' : 'is'} in this shop: {hits.join(', ')}
+              </div>
+            )}
+
             {/* Countdown */}
             <div className="mb-8 flex justify-center">
               <CountdownTimer
@@ -122,7 +132,12 @@ export default function ShopPage() {
               </h2>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 {offers.map((skin) => (
-                  <SkinCard key={skin.uuid} skin={skin} />
+                  <SkinCard
+                    key={skin.uuid}
+                    skin={skin}
+                    wishlisted={has(skin.uuid)}
+                    onToggleWishlist={() => toggle(skin)}
+                  />
                 ))}
               </div>
             </section>
@@ -138,7 +153,12 @@ export default function ShopPage() {
                 </h2>
                 <div className="space-y-4">
                   {bundles.map((bundle) => (
-                    <BundleCard key={bundle.uuid} bundle={bundle} />
+                    <BundleCard
+                      key={bundle.uuid}
+                      bundle={bundle}
+                      isWishlisted={has}
+                      onToggleWishlist={handleToggleBundleItem}
+                    />
                   ))}
                 </div>
               </section>

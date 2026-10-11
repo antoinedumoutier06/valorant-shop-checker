@@ -109,6 +109,36 @@ def get_skin(uuid: str) -> dict | None:
     return _skins.get(key) or _skin_levels_to_skin.get(key)
 
 
+def _is_collectible(skin: dict) -> bool:
+    """True for skins that can show up in a shop (excludes defaults and tier-less entries)."""
+    name = skin.get("displayName", "").lower()
+    if not skin.get("contentTierUuid"):
+        return False
+    return not (name.startswith("standard ") or name.startswith("random favorite"))
+
+
+def search_skins(query: str, limit: int = 20) -> list[dict]:
+    """Case-insensitive search over collectible skin names.
+
+    Every whitespace-separated token of the query must appear in the name.
+    Names starting with the query rank first, then alphabetical.
+    """
+    tokens = query.lower().split()
+    if not tokens:
+        return []
+
+    matches = []
+    for skin in _skins.values():
+        if not _is_collectible(skin):
+            continue
+        name = skin.get("displayName", "").lower()
+        if all(token in name for token in tokens):
+            matches.append((not name.startswith(tokens[0]), name, skin))
+
+    matches.sort(key=lambda m: (m[0], m[1]))
+    return [skin for _, _, skin in matches[:limit]]
+
+
 def get_content_tier(uuid: str) -> dict | None:
     return _content_tiers.get(uuid.lower())
 

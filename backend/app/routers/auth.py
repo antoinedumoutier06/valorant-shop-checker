@@ -55,6 +55,7 @@ class LoginResponse(BaseModel):
     status: str  # "success" | "error"
     session_token: str | None = None
     puuid: str | None = None
+    riot_id: str | None = None
     error: str | None = None
 
 
@@ -77,7 +78,7 @@ async def submit_token(body: TokenSubmitRequest, request: Request) -> LoginRespo
         id_token = tokens.get("id_token", "")
 
         entitlements = await riot_auth.get_entitlements(access_token)
-        puuid = await riot_auth.get_player_info(access_token)
+        puuid, riot_id = await riot_auth.get_player_info(access_token)
         region, shard = await riot_auth.get_region(access_token, id_token)
 
         session_data = SessionData(
@@ -86,10 +87,13 @@ async def submit_token(body: TokenSubmitRequest, request: Request) -> LoginRespo
             puuid=puuid,
             shard=shard,
             region=region,
+            riot_id=riot_id,
         )
         session_token = store.create(session_data)
 
-        return LoginResponse(status="success", session_token=session_token, puuid=puuid)
+        return LoginResponse(
+            status="success", session_token=session_token, puuid=puuid, riot_id=riot_id
+        )
 
     except riot_auth.AuthenticationError as e:
         return LoginResponse(status="error", error=str(e))
@@ -124,4 +128,4 @@ async def check_session(request: Request) -> dict:
     if not session:
         return {"valid": False}
 
-    return {"valid": True, "puuid": session.puuid}
+    return {"valid": True, "puuid": session.puuid, "riot_id": session.riot_id}

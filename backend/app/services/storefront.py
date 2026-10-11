@@ -7,6 +7,7 @@ from app.models.store import (
     BundleResponse,
     Bundle,
     DailyStoreResponse,
+    SkinInfo,
     SkinOffer,
     Wallet,
 )
@@ -88,6 +89,20 @@ def _resolve_skin_offer(offer: dict) -> SkinOffer | None:
     )
 
 
+def to_skin_info(skin: dict) -> SkinInfo:
+    """Build a SkinInfo from an asset-cache skin entry."""
+    tier_uuid = skin.get("contentTierUuid", "")
+    tier = get_content_tier(tier_uuid)
+    return SkinInfo(
+        uuid=skin["uuid"],
+        name=skin.get("displayName", "Unknown"),
+        display_icon=skin.get("displayIcon", "") or "",
+        content_tier_uuid=tier_uuid,
+        content_tier_name=tier["name"] if tier else "Unknown",
+        content_tier_color=tier["highlight_color"] if tier else "",
+    )
+
+
 def get_daily_store(raw_storefront: dict) -> DailyStoreResponse:
     """Parse the daily store from raw storefront data."""
     panel = raw_storefront.get("SkinsPanelLayout", {})
@@ -130,11 +145,15 @@ def get_featured_bundle(raw_storefront: dict) -> BundleResponse:
             skin = get_skin(item_uuid)
             item_name = skin["displayName"] if skin else "Unknown"
             item_icon = (skin.get("displayIcon", "") if skin else "") or ""
+            item_tier = get_content_tier(skin.get("contentTierUuid", "")) if skin else None
 
             items.append(BundleItem(
                 uuid=item_uuid,
+                skin_uuid=skin["uuid"] if skin else None,
                 name=item_name,
                 display_icon=item_icon,
+                content_tier_name=item_tier["name"] if item_tier else "",
+                content_tier_color=item_tier["highlight_color"] if item_tier else "",
                 base_price=base_price,
                 discounted_price=discounted_price,
                 discount_percent=discount_pct,

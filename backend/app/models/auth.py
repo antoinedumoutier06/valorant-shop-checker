@@ -9,6 +9,7 @@ class SessionData:
     puuid: str
     shard: str
     region: str
+    riot_id: str | None = None
     riot_cookies: dict = field(default_factory=dict)
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     expires_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))

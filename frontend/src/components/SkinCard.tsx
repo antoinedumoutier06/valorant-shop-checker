@@ -1,34 +1,47 @@
 import type { SkinOffer } from '../types';
-
-const TIER_COLOR_MAP: Record<string, string> = {
-  select: 'var(--color-tier-select)',
-  deluxe: 'var(--color-tier-deluxe)',
-  premium: 'var(--color-tier-premium)',
-  ultra: 'var(--color-tier-ultra)',
-  exclusive: 'var(--color-tier-exclusive)',
-};
-
-function getTierColor(tierName: string, apiColor: string): string {
-  const key = tierName.toLowerCase().replace(/\s*edition$/i, '');
-  return TIER_COLOR_MAP[key] || (apiColor ? `#${apiColor.slice(0, 6)}` : 'var(--color-text-secondary)');
-}
+import { getTierColor } from '../utils/tier';
+import WishlistButton from './WishlistButton';
 
 interface SkinCardProps {
   skin: SkinOffer;
+  wishlisted?: boolean;
+  onToggleWishlist?: () => void;
 }
 
-export default function SkinCard({ skin }: SkinCardProps) {
+export default function SkinCard({ skin, wishlisted = false, onToggleWishlist }: SkinCardProps) {
   const tierColor = getTierColor(skin.content_tier_name, skin.content_tier_color);
 
   return (
     <div
-      className="group relative overflow-hidden rounded-lg border border-border bg-bg-card transition-all duration-200 hover:scale-[1.02]"
+      className={`group relative overflow-hidden rounded-lg border bg-bg-card transition-all duration-200 hover:scale-[1.02] ${
+        wishlisted
+          ? 'border-accent-teal shadow-[0_0_24px_rgba(23,232,181,0.25)]'
+          : 'border-border'
+      }`}
       style={{
         '--glow-color': tierColor,
       } as React.CSSProperties}
     >
       {/* Tier accent line at top */}
       <div className="h-0.5" style={{ backgroundColor: tierColor }} />
+
+      {/* Wishlist */}
+      {wishlisted && (
+        <span
+          className="absolute left-3 top-3 z-10 rounded-full bg-accent-teal px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-bg-primary"
+          style={{ fontFamily: "'Oswald', sans-serif" }}
+        >
+          On your wishlist
+        </span>
+      )}
+      {onToggleWishlist && (
+        <WishlistButton
+          active={wishlisted}
+          onToggle={onToggleWishlist}
+          skinName={skin.name}
+          className="absolute right-2 top-3 z-10"
+        />
+      )}
 
       {/* Skin image */}
       <div className="flex aspect-video items-center justify-center p-4">

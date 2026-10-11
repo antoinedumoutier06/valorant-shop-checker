@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react';
-import type { Bundle } from '../types';
+import type { Bundle, BundleItem } from '../types';
+import WishlistButton from './WishlistButton';
 
 interface BundleCardProps {
   bundle: Bundle;
+  isWishlisted?: (skinUuid: string | null) => boolean;
+  onToggleWishlist?: (item: BundleItem) => void;
 }
 
 function formatTime(totalSecs: number): string {
@@ -14,7 +17,7 @@ function formatTime(totalSecs: number): string {
   return `${h}h ${m.toString().padStart(2, '0')}m ${s.toString().padStart(2, '0')}s`;
 }
 
-export default function BundleCard({ bundle }: BundleCardProps) {
+export default function BundleCard({ bundle, isWishlisted, onToggleWishlist }: BundleCardProps) {
   const [remaining, setRemaining] = useState(bundle.duration_remaining_secs);
   const [prevSecs, setPrevSecs] = useState(bundle.duration_remaining_secs);
 
@@ -67,31 +70,45 @@ export default function BundleCard({ bundle }: BundleCardProps) {
 
       {/* Items grid */}
       <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 lg:grid-cols-4">
-        {bundle.items.map((item) => (
-          <div
-            key={item.uuid}
-            className="flex flex-col items-center rounded border border-border/50 bg-bg-secondary p-2"
-          >
-            {item.display_icon ? (
-              <img
-                src={item.display_icon}
-                alt={item.name}
-                className="mb-2 h-16 w-full object-contain"
-              />
-            ) : (
-              <div className="mb-2 flex h-16 w-full items-center justify-center text-xs text-text-secondary">
-                No image
+        {bundle.items.map((item) => {
+          const wishlisted = isWishlisted?.(item.skin_uuid) ?? false;
+          return (
+            <div
+              key={item.uuid}
+              className={`relative flex flex-col items-center rounded border bg-bg-secondary p-2 ${
+                wishlisted ? 'border-accent-teal shadow-[0_0_16px_rgba(23,232,181,0.2)]' : 'border-border/50'
+              }`}
+            >
+              {item.skin_uuid && onToggleWishlist && (
+                <WishlistButton
+                  active={wishlisted}
+                  onToggle={() => onToggleWishlist(item)}
+                  skinName={item.name}
+                  size="sm"
+                  className="absolute right-1 top-1 z-10"
+                />
+              )}
+              {item.display_icon ? (
+                <img
+                  src={item.display_icon}
+                  alt={item.name}
+                  className="mb-2 h-16 w-full object-contain"
+                />
+              ) : (
+                <div className="mb-2 flex h-16 w-full items-center justify-center text-xs text-text-secondary">
+                  No image
+                </div>
+              )}
+              <p className="line-clamp-1 text-center text-xs text-text-primary">{item.name}</p>
+              <div className="mt-1 flex items-center gap-1 text-xs text-text-secondary">
+                <svg className="h-2.5 w-2.5" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2L2 12l10 10 10-10L12 2zm0 3.5L18.5 12 12 18.5 5.5 12 12 5.5z" />
+                </svg>
+                {item.discounted_price.toLocaleString()}
               </div>
-            )}
-            <p className="line-clamp-1 text-center text-xs text-text-primary">{item.name}</p>
-            <div className="mt-1 flex items-center gap-1 text-xs text-text-secondary">
-              <svg className="h-2.5 w-2.5" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 2L2 12l10 10 10-10L12 2zm0 3.5L18.5 12 12 18.5 5.5 12 12 5.5z" />
-              </svg>
-              {item.discounted_price.toLocaleString()}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Total price */}

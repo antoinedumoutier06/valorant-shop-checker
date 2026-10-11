@@ -1,20 +1,31 @@
 from pydantic import BaseModel
 
 
-class SkinOffer(BaseModel):
+class SkinInfo(BaseModel):
     uuid: str
     name: str
     display_icon: str
     content_tier_uuid: str
     content_tier_name: str
     content_tier_color: str
+
+
+class SkinOffer(SkinInfo):
     cost: int
+
+
+class SkinSearchResponse(BaseModel):
+    results: list[SkinInfo]
 
 
 class BundleItem(BaseModel):
     uuid: str
+    # Parent skin UUID when the item is a weapon skin (used to match the wishlist).
+    skin_uuid: str | None = None
     name: str
     display_icon: str
+    content_tier_name: str = ""
+    content_tier_color: str = ""
     base_price: int
     discounted_price: int
     discount_percent: float

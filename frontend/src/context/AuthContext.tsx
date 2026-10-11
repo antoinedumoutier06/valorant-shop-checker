@@ -6,48 +6,19 @@ import {
   type Dispatch,
   type ReactNode,
 } from 'react';
-import type { AuthAction, AuthState } from '../types';
+import type { Account, AuthAction, AuthState } from '../types';
 import * as api from '../api/client';
-
-const initialState: AuthState = {
-  status: 'idle',
-  sessionValid: false,
-  puuid: null,
-  error: null,
-};
-
-function authReducer(state: AuthState, action: AuthAction): AuthState {
-  switch (action.type) {
-    case 'LOGIN_START':
-      return { ...state, status: 'loading', error: null };
-    case 'LOGIN_SUCCESS':
-      return {
-        status: 'authenticated',
-        sessionValid: true,
-        puuid: action.puuid,
-        error: null,
-      };
-    case 'LOGIN_ERROR':
-      return { ...state, status: 'error', error: action.error };
-    case 'LOGOUT':
-      api.clearToken();
-      return { ...initialState };
-    case 'SESSION_RESTORED':
-      return {
-        status: 'authenticated',
-        sessionValid: true,
-        puuid: action.puuid,
-        error: null,
-      };
-  }
-}
+import { authReducer, initialState } from './authReducer';
 
 const AuthContext = createContext<{
   state: AuthState;
   dispatch: Dispatch<AuthAction>;
+  /** The currently selected account, or null when logged out. */
+  activeAccount: Account | null;
 }>({
   state: initialState,
   dispatch: () => undefined,
+  activeAccount: null,
 });
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -58,23 +29,42 @@ export function useAuth() {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(authReducer, initialState);
 
+  // Restore saved accounts and check which sessions are still alive.
   useEffect(() => {
-    // Only check session if we have a stored token
-    if (!api.getStoredToken()) return;
+    let cancelled = false;
+    const stored = api.loadStoredAccounts();
+    const activePuuid = api.loadActivePuuid();
 
-    api.checkSession().then((res) => {
-      if (res.valid && res.puuid) {
-        dispatch({ type: 'SESSION_RESTORED', puuid: res.puuid });
-      } else {
-        api.clearToken();
-      }
-    }).catch(() => {
-      api.clearToken();
+    Promise.all(
+      stored.map(async (account): Promise<Account> => {
+        try {
+          const res = await api.checkSession(account.token);
+          if (!res.valid) return { ...account, expired: true };
+          return { ...account, label: res.riot_id ?? account.label };
+        } catch {
+          // Backend unreachable: keep the account; a real request will report a 401 if needed.
+          return account;
+        }
+      }),
+    ).then((accounts) => {
+      if (!cancelled) dispatch({ type: 'ACCOUNTS_LOADED', accounts, activePuuid });
     });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
+  // Persist accounts (including expired ones, so they can be reconnected later).
+  useEffect(() => {
+    if (state.status === 'idle') return;
+    api.saveStoredAccounts(state.accounts, state.puuid);
+  }, [state.status, state.accounts, state.puuid]);
+
+  const activeAccount = state.accounts.find((a) => a.puuid === state.puuid) ?? null;
+
   return (
-    <AuthContext.Provider value={{ state, dispatch }}>
+    <AuthContext.Provider value={{ state, dispatch, activeAccount }}>
       {children}
     </AuthContext.Provider>
   );

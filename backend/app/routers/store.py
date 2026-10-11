@@ -1,11 +1,11 @@
 import logging
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from app.models.auth import SessionData
-from app.models.store import BundleResponse, DailyStoreResponse, Wallet
-from app.services import storefront
+from app.models.store import BundleResponse, DailyStoreResponse, SkinSearchResponse, Wallet
+from app.services import asset_cache, storefront
 from app.session_store import store
 
 logger = logging.getLogger(__name__)
@@ -67,6 +67,16 @@ async def featured_bundle(session: SessionData = Depends(get_session)) -> Bundle
     except (httpx.HTTPStatusError, httpx.RequestError) as exc:
         raise _handle_riot_error(exc)
     return storefront.get_featured_bundle(raw)
+
+
+@router.get("/skins/search", response_model=SkinSearchResponse)
+async def search_skins(
+    q: str = Query(..., min_length=2, max_length=50),
+    limit: int = Query(20, ge=1, le=50),
+) -> SkinSearchResponse:
+    """Search the skin catalog by name. Public game data, no session needed."""
+    skins = asset_cache.search_skins(q, limit)
+    return SkinSearchResponse(results=[storefront.to_skin_info(s) for s in skins])
 
 
 @router.get("/wallet", response_model=Wallet)

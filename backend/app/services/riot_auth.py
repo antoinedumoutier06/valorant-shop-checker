@@ -106,7 +106,8 @@ async def get_entitlements(access_token: str) -> str:
         return resp.json()["entitlements_token"]
 
 
-async def get_player_info(access_token: str) -> str:
+async def get_player_info(access_token: str) -> tuple[str, str | None]:
+    """Return (puuid, riot_id). riot_id is "GameName#TAG", or None if Riot didn't send it."""
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.get(
             USERINFO_URL,
@@ -114,7 +115,13 @@ async def get_player_info(access_token: str) -> str:
         )
         _check_rate_limit(resp)
         resp.raise_for_status()
-        return resp.json()["sub"]
+        data = resp.json()
+
+    acct = data.get("acct") or {}
+    game_name = acct.get("game_name")
+    tag_line = acct.get("tag_line")
+    riot_id = f"{game_name}#{tag_line}" if game_name and tag_line else None
+    return data["sub"], riot_id
 
 
 async def get_region(access_token: str, id_token: str) -> tuple[str, str]:

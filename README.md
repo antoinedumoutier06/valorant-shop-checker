@@ -19,6 +19,8 @@ A web app that lets Valorant players view their personalized daily shop rotation
 - **Featured Bundles** — See current bundles with item breakdowns and discount pricing
 - **Wallet Balance** — Check your VP and Radianite Points
 - **Auto-Refresh** — Countdown timer with automatic store refresh on rotation
+- **Multiple Accounts** — Connect several Riot accounts and switch between them from the header menu; expired sessions can be reconnected in one click
+- **Skin Wishlist** — Search the skin catalog and wishlist skins (or tap the heart on any skin in your shop). Wishlisted skins are highlighted in your shop, and the Wishlist page shows which connected account has them on sale today (daily shop or featured bundle)
 - **Secure Auth** — Riot OAuth implicit-grant flow; your password never touches this app
 
 ## Tech Stack
@@ -57,6 +59,7 @@ A web app that lets Valorant players view their personalized daily shop rotation
 | **Paste-URL auth flow** | Riot's OAuth with `client_id=riot-client` enforces `redirect_uri=http://localhost/redirect` — no custom redirect URIs are allowed. Server-side credential auth was attempted but Riot blocks it with Cloudflare/captcha challenges. The paste-URL flow is the only reliable approach for a deployed web app. |
 | **localStorage + Bearer tokens** (not cookies) | Cross-origin cookies are blocked by mobile Safari and other browsers with strict third-party cookie policies. `localStorage` with `Authorization: Bearer` headers works reliably across all platforms. |
 | **sessionStorage for login stage** | Mobile browsers kill the JS context when the user switches tabs to complete Riot login. `sessionStorage` persists the UI state so the paste form survives tab switches. |
+| **Accounts and wishlist live in the browser** | Each Riot account keeps its own server session token; the browser stores the list of tokens and which one is active, so the backend stays stateless about "users" and needs no database. The wishlist is stored the same way. The trade-off: both are per-browser and aren't synced across devices. |
 | **In-memory session store** | Simplicity over durability — sessions are short-lived (3h access token TTL) and the app targets a small user base. No database dependency needed. |
 | **Asset cache at startup** | All skin/bundle/tier data is loaded from valorant-api.com into O(1) lookup dicts on startup, avoiding per-request API calls and keeping response times fast. |
 | **Docker `--no-cache` in CI** | Docker's `COPY` layer caching caused stale deployments where code changes weren't reflected. `--no-cache` ensures every deploy uses fresh code. |
@@ -127,10 +130,10 @@ valorant-shop-checker/
 │   └── pyproject.toml
 ├── frontend/
 │   ├── src/
-│   │   ├── pages/         # LoginPage, ShopPage
-│   │   ├── components/    # SkinCard, BundleCard, CountdownTimer, etc.
-│   │   ├── api/           # API client with token management
-│   │   ├── context/       # Auth state (useReducer)
+│   │   ├── pages/         # LoginPage, ShopPage, WishlistPage
+│   │   ├── components/    # SkinCard, BundleCard, AccountSwitcher, etc.
+│   │   ├── api/           # API client (token passed per call) + account storage
+│   │   ├── context/       # Auth/accounts (useReducer) and wishlist state
 │   │   └── types/         # TypeScript interfaces
 │   ├── vite.config.ts
 │   └── package.json

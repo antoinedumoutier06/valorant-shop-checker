@@ -1,11 +1,16 @@
 import { useState } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import * as api from '../api/client';
 
 type Stage = 'start' | 'paste';
 
-export default function LoginPage() {
+interface LoginPageProps {
+  /** Add (or reconnect) an account while already logged in, instead of redirecting to the shop. */
+  addMode?: boolean;
+}
+
+export default function LoginPage({ addMode = false }: LoginPageProps) {
   const { state, dispatch } = useAuth();
   const navigate = useNavigate();
 
@@ -16,7 +21,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  if (state.status === 'authenticated') {
+  if (state.status === 'authenticated' && !addMode) {
     return <Navigate to="/shop" replace />;
   }
 
@@ -48,8 +53,19 @@ export default function LoginPage() {
 
       if (res.status === 'success' && res.puuid && res.session_token) {
         sessionStorage.removeItem('login_stage');
-        api.storeToken(res.session_token);
-        dispatch({ type: 'LOGIN_SUCCESS', puuid: res.puuid });
+
+        // Reconnecting an account that is already listed: drop its old server session.
+        const previous = state.accounts.find((a) => a.puuid === res.puuid);
+        if (previous) api.logout(previous.token).catch(() => {});
+
+        dispatch({
+          type: 'LOGIN_SUCCESS',
+          account: {
+            puuid: res.puuid,
+            token: res.session_token,
+            label: res.riot_id ?? `${res.puuid.slice(0, 8)}…`,
+          },
+        });
         navigate('/shop');
       } else {
         setError(res.error ?? 'Authentication failed');
@@ -89,7 +105,9 @@ export default function LoginPage() {
             VALORANT <span className="text-accent-red">SHOP</span>
           </h1>
           <p className="mb-8 text-center text-sm text-text-secondary">
-            Check your daily store without launching the game
+            {addMode
+              ? 'Add another Riot account'
+              : 'Check your daily store without launching the game'}
           </p>
 
           {stage === 'start' ? (
@@ -109,6 +127,12 @@ export default function LoginPage() {
                 a <span className="text-accent-red">"can't connect"</span> page —
                 that's normal. Copy the URL and come back here to paste it.
               </p>
+              {addMode && (
+                <p className="mt-3 text-center text-xs leading-relaxed text-text-secondary/70">
+                  Riot will ask you to sign in again, so you can use a different account
+                  or reconnect one whose session expired.
+                </p>
+              )}
 
               {error && (
                 <p className="mt-4 text-center text-sm text-accent-red">{error}</p>
@@ -159,6 +183,16 @@ export default function LoginPage() {
             </div>
           )}
         </div>
+
+        {addMode && state.status === 'authenticated' && (
+          <Link
+            to="/shop"
+            className="mt-6 block text-center text-xs uppercase tracking-widest text-text-secondary transition-colors hover:text-text-primary"
+            style={{ fontFamily: "'Oswald', sans-serif" }}
+          >
+            Cancel
+          </Link>
+        )}
 
         <p className="mt-6 text-center text-xs leading-relaxed text-text-secondary/70">
           You'll log in on Riot's official page — this app never sees your password.

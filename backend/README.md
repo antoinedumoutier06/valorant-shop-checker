@@ -32,7 +32,7 @@ The server starts at `http://localhost:8000`.
 |---|---|---|
 | `GET` | `/api/auth/url` | Returns the Riot OAuth URL for the user to open |
 | `POST` | `/api/auth/token` | Accepts the pasted redirect URL, extracts tokens, creates a session |
-| `GET` | `/api/auth/session` | Check if the current session is valid |
+| `GET` | `/api/auth/session` | Check if the current session is valid (returns `puuid` and `riot_id`) |
 | `POST` | `/api/auth/logout` | Invalidate the current session |
 
 ### Store
@@ -45,11 +45,28 @@ All store endpoints require `Authorization: Bearer <session_token>` header.
 | `GET` | `/api/store/bundle` | Currently featured bundles |
 | `GET` | `/api/store/wallet` | VP and Radianite Point balance |
 
+Multiple accounts: each account logs in through `/api/auth/token` and gets its own session token. The client picks which account a request is for by sending that account's token.
+
+### Skin catalog
+
+No session needed (public game data).
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/store/skins/search?q=<text>&limit=20` | Search skins by name (`q` ≥ 2 chars, `limit` ≤ 50). Default and tier-less skins are excluded |
+
 ### Health
 
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/api/health` | Health check (`{"status": "ok"}`) |
+
+## Tests
+
+```bash
+pip install -e ".[dev]"
+pytest
+```
 
 ## Docker
 
@@ -80,4 +97,6 @@ app/
 └── models/
     ├── auth.py          # SessionData dataclass
     └── store.py         # Pydantic response models
+tests/
+└── test_skin_search.py  # Skin search + bundle parsing tests
 ```

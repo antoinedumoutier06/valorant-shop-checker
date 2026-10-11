@@ -3,24 +3,32 @@
 export interface SessionResponse {
   valid: boolean;
   puuid?: string;
+  riot_id?: string | null;
 }
 
 // Store types
 
-export interface SkinOffer {
+export interface SkinInfo {
   uuid: string;
   name: string;
   display_icon: string;
   content_tier_uuid: string;
   content_tier_name: string;
   content_tier_color: string;
+}
+
+export interface SkinOffer extends SkinInfo {
   cost: number;
 }
 
 export interface BundleItem {
   uuid: string;
+  /** Parent skin UUID when the item is a weapon skin (matches wishlist entries). */
+  skin_uuid: string | null;
   name: string;
   display_icon: string;
+  content_tier_name: string;
+  content_tier_color: string;
   base_price: number;
   discounted_price: number;
   discount_percent: number;
@@ -50,18 +58,35 @@ export interface BundleResponse {
   bundles: Bundle[];
 }
 
-// Auth state
+export interface SkinSearchResponse {
+  results: SkinInfo[];
+}
+
+// Accounts & auth state
+
+/** A connected Riot account. `expired` is runtime-only (never persisted). */
+export interface Account {
+  puuid: string;
+  /** Backend session token for this account. */
+  token: string;
+  /** Display name: Riot ID ("Name#TAG") when known, else a short puuid. */
+  label: string;
+  expired?: boolean;
+}
 
 export interface AuthState {
-  status: 'idle' | 'loading' | 'authenticated' | 'error';
+  /** `idle` until the stored accounts have been checked at startup. */
+  status: 'idle' | 'unauthenticated' | 'authenticated';
   sessionValid: boolean;
+  /** puuid of the active account. */
   puuid: string | null;
-  error: string | null;
+  accounts: Account[];
 }
 
 export type AuthAction =
-  | { type: 'LOGIN_START' }
-  | { type: 'LOGIN_SUCCESS'; puuid: string }
-  | { type: 'LOGIN_ERROR'; error: string }
-  | { type: 'LOGOUT' }
-  | { type: 'SESSION_RESTORED'; puuid: string };
+  | { type: 'ACCOUNTS_LOADED'; accounts: Account[]; activePuuid: string | null }
+  | { type: 'LOGIN_SUCCESS'; account: Account }
+  | { type: 'SWITCH_ACCOUNT'; puuid: string }
+  | { type: 'REMOVE_ACCOUNT'; puuid: string }
+  | { type: 'ACCOUNT_EXPIRED'; puuid: string }
+  | { type: 'LOGOUT_ALL' };
